@@ -6,10 +6,14 @@ import { StyleBar } from './components/StyleBar'
 import { TabBar, type TabInfo } from './components/TabBar'
 
 type Theme = 'light' | 'dark'
+type ViewMode = 'page' | 'wide'
 
 const ZOOM_MIN = 0.5
 const ZOOM_MAX = 3
 const ZOOM_STEP = 0.1
+
+const SIDEBAR_MIN = 160
+const SIDEBAR_MAX = 560
 
 function baseName(filePath: string): string {
   return filePath.split(/[\\/]/).pop() || filePath
@@ -23,6 +27,8 @@ function App(): JSX.Element {
   const [theme, setTheme] = useState<Theme>('dark')
   const [zoom, setZoom] = useState<number>(1)
   const [selection, setSelection] = useState<SelectionState | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(260)
+  const [viewMode, setViewMode] = useState<ViewMode>('page')
 
   // Latest markdown per open file, so switching tabs preserves unsaved edits.
   const latestByPath = useRef<Map<string, string>>(new Map())
@@ -164,7 +170,7 @@ function App(): JSX.Element {
     }
   }, [openTab])
 
-  // Load saved UI preferences (theme + zoom) once on launch.
+  // Load saved UI preferences (theme, zoom, sidebar width, view mode) on launch.
   useEffect(() => {
     void (async () => {
       const settings = await window.api.getSettings()
@@ -172,6 +178,8 @@ function App(): JSX.Element {
       const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, settings.zoom))
       setZoom(z)
       window.api.applyZoom(z)
+      setSidebarWidth(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, settings.sidebarWidth)))
+      setViewMode(settings.viewMode)
     })()
   }, [])
 
@@ -197,6 +205,34 @@ function App(): JSX.Element {
   const zoomIn = useCallback(() => applyZoom(zoom + ZOOM_STEP), [zoom, applyZoom])
   const zoomOut = useCallback(() => applyZoom(zoom - ZOOM_STEP), [zoom, applyZoom])
   const zoomReset = useCallback(() => applyZoom(1), [applyZoom])
+
+  const toggleView = useCallback(() => {
+    setViewMode((prev) => {
+      const next: ViewMode = prev === 'page' ? 'wide' : 'page'
+      void window.api.setViewMode(next)
+      return next
+    })
+  }, [])
+
+  // Drag-to-resize the sidebar. We track the pointer on the whole window so the
+  // drag keeps working even when the cursor moves over the editor.
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    document.body.classList.add('resizing-col')
+    const onMove = (ev: MouseEvent): void => {
+      const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, ev.clientX))
+      setSidebarWidth(w)
+    }
+    const onUp = (ev: MouseEvent): void => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.classList.remove('resizing-col')
+      const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, ev.clientX))
+      void window.api.setSidebarWidth(w)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [])
 
   // Global keyboard shortcuts: save, close tab, zoom.
   useEffect(() => {
@@ -229,7 +265,7 @@ function App(): JSX.Element {
   return (
     <div className="app-shell">
       <div className="app">
-        <aside className="sidebar">
+        <aside className="sidebar" style={{ width: sidebarWidth }}>
           <div className="sidebar-header">
             <span className="sidebar-title">{folder ? folder.rootName : 'MD Editor'}</span>
             <div className="sidebar-actions">
@@ -261,7 +297,15 @@ function App(): JSX.Element {
           </div>
         </aside>
 
-        <main className="editor-pane">
+        <div
+          className="col-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize"
+          onMouseDown={startResize}
+        />
+
+        <main className={`editor-pane view-${viewMode}`}>
           {tabs.length > 0 && activePath ? (
             <>
               <TabBar
@@ -289,13 +333,26 @@ function App(): JSX.Element {
       </div>
 
       <footer className="statusbar">
-        <button
-          className="status-btn"
-          onClick={toggleTheme}
-          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-        >
-          {theme === 'dark' ? '☀ Light' : '☾ Dark'}
-        </button>
+        <div className="status-left">
+          <button
+            className="status-btn"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+          >
+            {theme === 'dark' ? '☀ Light' : '☾ Dark'}
+          </button>
+          <button
+            className="status-btn"
+            onClick={toggleView}
+            title={
+              viewMode === 'page'
+                ? 'Switch to wide view (fills the window)'
+                : 'Switch to page view (8.5×11 with margins)'
+            }
+          >
+            {viewMode === 'page' ? '▭ Page' : '⬌ Wide'}
+          </button>
+        </div>
 
         <span className="status-message">{status}</span>
 

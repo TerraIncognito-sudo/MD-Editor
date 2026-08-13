@@ -10,6 +10,7 @@
   --active-bg: #313244;
   --hover-bg: #26263a;
   --statusbar-bg: #181825;
+  --page-backdrop: #131320;
 }
 
 :root[data-theme='light'] {
@@ -22,6 +23,7 @@
   --active-bg: #e5e9f2;
   --hover-bg: #eceef2;
   --statusbar-bg: #f4f5f7;
+  --page-backdrop: #d6d8de;
 }
 
 /* ---------- Milkdown editor theme variables (follow data-theme) ---------- */
@@ -120,11 +122,32 @@ body {
 /* ---------- Sidebar ---------- */
 .sidebar {
   width: 260px;
-  min-width: 180px;
+  flex-shrink: 0;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  user-select: none;
+}
+
+/* ---------- Draggable divider between sidebar and editor ---------- */
+.col-resizer {
+  flex: 0 0 5px;
+  width: 5px;
+  margin-left: -3px;
+  margin-right: -2px;
+  z-index: 5;
+  cursor: col-resize;
+  background: transparent;
+}
+.col-resizer:hover,
+body.resizing-col .col-resizer {
+  background: var(--accent);
+}
+
+/* While dragging, suppress text selection and force the resize cursor. */
+body.resizing-col {
+  cursor: col-resize;
   user-select: none;
 }
 
@@ -399,14 +422,30 @@ body {
   min-height: 0;
 }
 
-/* Let the Milkdown editor fill the pane and read comfortably. */
 .milkdown-host .milkdown {
-  height: 100%;
+  min-height: 100%;
 }
-.milkdown-host .milkdown .ProseMirror {
-  max-width: 780px;
-  margin: 0 auto;
-  padding: 24px 32px 120px;
+
+/* ---------- Wide view: content fills the window, edge to edge ---------- */
+.view-wide .milkdown-host .milkdown .ProseMirror {
+  max-width: none;
+  margin: 0;
+  padding: 24px 40px 120px;
+}
+
+/* ---------- Page view: a standard 8.5in x 11in sheet with 1in margins ---------- */
+.view-page .milkdown-host {
+  background: var(--page-backdrop);
+}
+.view-page .milkdown-host .milkdown .ProseMirror {
+  width: 8.5in;
+  max-width: calc(100% - 32px);
+  min-height: 11in;
+  margin: 24px auto;
+  padding: 1in;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--crepe-shadow-2, 0 2px 12px rgba(0, 0, 0, 0.25));
 }
 
 /* ---------- Bottom status bar ---------- */
@@ -419,6 +458,12 @@ body {
   background: var(--statusbar-bg);
   border-top: 1px solid var(--border);
   user-select: none;
+}
+
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .status-btn {

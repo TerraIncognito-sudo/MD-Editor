@@ -11,6 +11,8 @@ interface AppConfig {
   lastFile?: string
   theme?: 'light' | 'dark'
   zoom?: number
+  sidebarWidth?: number
+  viewMode?: 'page' | 'wide'
 }
 
 function configPath(): string {
@@ -206,12 +208,15 @@ function registerIpc(): void {
     return true
   })
 
-  // UI preferences (theme + zoom), loaded on launch and persisted on change.
+  // UI preferences (theme, zoom, sidebar width, view mode), loaded on launch
+  // and persisted on change.
   ipcMain.handle('app:getSettings', async () => {
     const cfg = await readConfig()
     return {
       theme: cfg.theme === 'light' ? 'light' : 'dark',
-      zoom: typeof cfg.zoom === 'number' ? cfg.zoom : 1
+      zoom: typeof cfg.zoom === 'number' ? cfg.zoom : 1,
+      sidebarWidth: typeof cfg.sidebarWidth === 'number' ? cfg.sidebarWidth : 260,
+      viewMode: cfg.viewMode === 'wide' ? 'wide' : 'page'
     }
   })
 
@@ -224,6 +229,18 @@ function registerIpc(): void {
     if (typeof zoom === 'number' && Number.isFinite(zoom)) {
       await writeConfig({ zoom })
     }
+    return true
+  })
+
+  ipcMain.handle('app:setSidebarWidth', async (_e, width: number) => {
+    if (typeof width === 'number' && Number.isFinite(width)) {
+      await writeConfig({ sidebarWidth: Math.round(width) })
+    }
+    return true
+  })
+
+  ipcMain.handle('app:setViewMode', async (_e, mode: 'page' | 'wide') => {
+    await writeConfig({ viewMode: mode === 'wide' ? 'wide' : 'page' })
     return true
   })
 

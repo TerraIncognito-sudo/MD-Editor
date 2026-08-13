@@ -20,6 +20,8 @@ export interface SessionResult extends FolderResult {
 export interface Settings {
   theme: 'light' | 'dark'
   zoom: number
+  sidebarWidth: number
+  viewMode: 'page' | 'wide'
 }
 
 const api = {
@@ -31,6 +33,10 @@ const api = {
   setTheme: (theme: 'light' | 'dark'): Promise<boolean> =>
     ipcRenderer.invoke('app:setTheme', theme),
   setZoom: (zoom: number): Promise<boolean> => ipcRenderer.invoke('app:setZoom', zoom),
+  setSidebarWidth: (width: number): Promise<boolean> =>
+    ipcRenderer.invoke('app:setSidebarWidth', width),
+  setViewMode: (mode: 'page' | 'wide'): Promise<boolean> =>
+    ipcRenderer.invoke('app:setViewMode', mode),
   // Applies the zoom to the renderer frame immediately (does not persist).
   applyZoom: (factor: number): void => webFrame.setZoomFactor(factor),
   readTree: (rootPath: string): Promise<FolderResult | null> =>
