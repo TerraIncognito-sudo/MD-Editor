@@ -1,4 +1,6 @@
-:root {
+/* ---------- App chrome palette (dark is the default) ---------- */
+:root,
+:root[data-theme='dark'] {
   --bg: #1e1e2e;
   --sidebar-bg: #181825;
   --border: #313244;
@@ -7,6 +9,79 @@
   --accent: #89b4fa;
   --active-bg: #313244;
   --hover-bg: #26263a;
+  --statusbar-bg: #181825;
+}
+
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --sidebar-bg: #f4f5f7;
+  --border: #e2e4e9;
+  --text: #1c1c1e;
+  --text-dim: #6b7280;
+  --accent: #2f6df6;
+  --active-bg: #e5e9f2;
+  --hover-bg: #eceef2;
+  --statusbar-bg: #f4f5f7;
+}
+
+/* ---------- Milkdown editor theme variables (follow data-theme) ---------- */
+:root[data-theme='dark'] .milkdown {
+  --crepe-color-background: #1e1e2e;
+  --crepe-color-on-background: #e6e6e6;
+  --crepe-color-surface: #181825;
+  --crepe-color-surface-low: #1c1c1c;
+  --crepe-color-on-surface: #d1d1d1;
+  --crepe-color-on-surface-variant: #a9a9a9;
+  --crepe-color-outline: #757575;
+  --crepe-color-primary: #b5b5b5;
+  --crepe-color-secondary: #4d4d4d;
+  --crepe-color-on-secondary: #d6d6d6;
+  --crepe-color-inverse: #e5e5e5;
+  --crepe-color-on-inverse: #2a2a2a;
+  --crepe-color-inline-code: #ff6666;
+  --crepe-color-error: #ff6666;
+  --crepe-color-hover: #232323;
+  --crepe-color-selected: #2f2f2f;
+  --crepe-color-inline-area: #2b2b2b;
+  --crepe-shadow-1:
+    0px 1px 2px 0px rgba(255, 255, 255, 0.3),
+    0px 1px 3px 1px rgba(255, 255, 255, 0.15);
+  --crepe-shadow-2:
+    0px 1px 2px 0px rgba(255, 255, 255, 0.3),
+    0px 2px 6px 2px rgba(255, 255, 255, 0.15);
+}
+
+:root[data-theme='light'] .milkdown {
+  --crepe-color-background: #ffffff;
+  --crepe-color-on-background: #000000;
+  --crepe-color-surface: #f7f7f7;
+  --crepe-color-surface-low: #ededed;
+  --crepe-color-on-surface: #1c1c1c;
+  --crepe-color-on-surface-variant: #4d4d4d;
+  --crepe-color-outline: #a8a8a8;
+  --crepe-color-primary: #333333;
+  --crepe-color-secondary: #cfcfcf;
+  --crepe-color-on-secondary: #000000;
+  --crepe-color-inverse: #f0f0f0;
+  --crepe-color-on-inverse: #1a1a1a;
+  --crepe-color-inline-code: #ba1a1a;
+  --crepe-color-error: #ba1a1a;
+  --crepe-color-hover: #e0e0e0;
+  --crepe-color-selected: #d5d5d5;
+  --crepe-color-inline-area: #cacaca;
+  --crepe-shadow-1:
+    0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
+  --crepe-shadow-2:
+    0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
+}
+
+/* Shared Milkdown font/size variables. */
+.milkdown {
+  --crepe-base-font-size: 16px;
+  --crepe-font-title: 'Noto Serif', Cambria, 'Times New Roman', Times, serif;
+  --crepe-font-default: 'Noto Sans', Arial, Helvetica, sans-serif;
+  --crepe-font-code:
+    'Space Mono', Fira Code, Menlo, Monaco, 'Courier New', Courier, monospace;
 }
 
 * {
@@ -28,10 +103,18 @@ body {
   overflow: hidden;
 }
 
-.app {
+/* ---------- Shell layout: content row + bottom status bar ---------- */
+.app-shell {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   width: 100vw;
+}
+
+.app {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
 /* ---------- Sidebar ---------- */
@@ -99,7 +182,7 @@ body {
 .primary-btn {
   margin-top: 12px;
   background: var(--accent);
-  color: #11111b;
+  color: #ffffff;
   border: none;
   padding: 8px 14px;
   border-radius: 6px;
@@ -211,4 +294,49 @@ body {
   max-width: 780px;
   margin: 0 auto;
   padding: 24px 32px 120px;
+}
+
+/* ---------- Bottom status bar ---------- */
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--statusbar-bg);
+  border-top: 1px solid var(--border);
+  user-select: none;
+}
+
+.status-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 5px;
+  line-height: 1;
+}
+.status-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.zoom-btn {
+  font-size: 15px;
+  width: 26px;
+  text-align: center;
+}
+
+.zoom-level {
+  min-width: 46px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }

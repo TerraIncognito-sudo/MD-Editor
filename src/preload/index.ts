@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webFrame } from 'electron'
 
 export interface TreeNode {
   name: string
@@ -17,11 +17,22 @@ export interface SessionResult extends FolderResult {
   lastFile: string | null
 }
 
+export interface Settings {
+  theme: 'light' | 'dark'
+  zoom: number
+}
+
 const api = {
   openFolder: (): Promise<FolderResult | null> => ipcRenderer.invoke('dialog:openFolder'),
   getLastSession: (): Promise<SessionResult | null> => ipcRenderer.invoke('app:getLastSession'),
   setLastFile: (filePath: string | null): Promise<boolean> =>
     ipcRenderer.invoke('app:setLastFile', filePath),
+  getSettings: (): Promise<Settings> => ipcRenderer.invoke('app:getSettings'),
+  setTheme: (theme: 'light' | 'dark'): Promise<boolean> =>
+    ipcRenderer.invoke('app:setTheme', theme),
+  setZoom: (zoom: number): Promise<boolean> => ipcRenderer.invoke('app:setZoom', zoom),
+  // Applies the zoom to the renderer frame immediately (does not persist).
+  applyZoom: (factor: number): void => webFrame.setZoomFactor(factor),
   readTree: (rootPath: string): Promise<FolderResult | null> =>
     ipcRenderer.invoke('fs:readTree', rootPath),
   readFile: (filePath: string): Promise<string> => ipcRenderer.invoke('fs:readFile', filePath),

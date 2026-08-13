@@ -9,6 +9,8 @@ const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.mkd', '.mdx
 interface AppConfig {
   lastFolder?: string
   lastFile?: string
+  theme?: 'light' | 'dark'
+  zoom?: number
 }
 
 function configPath(): string {
@@ -95,11 +97,10 @@ async function readDirTree(dirPath: string): Promise<TreeNode[]> {
     const fullPath = path.join(dirPath, entry.name)
 
     if (entry.isDirectory()) {
+      // Show every folder so the whole directory structure is browsable, even
+      // subfolders that contain no markdown files.
       const children = await readDirTree(fullPath)
-      // Keep a folder only if it contains markdown somewhere inside it.
-      if (children.length > 0) {
-        folders.push({ name: entry.name, path: fullPath, type: 'folder', children })
-      }
+      folders.push({ name: entry.name, path: fullPath, type: 'folder', children })
     } else if (entry.isFile()) {
       if (MARKDOWN_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
         files.push({ name: entry.name, path: fullPath, type: 'file' })
@@ -158,6 +159,27 @@ function registerIpc(): void {
   // Remember which note is open, so it can be reopened next launch.
   ipcMain.handle('app:setLastFile', async (_e, filePath: string | null) => {
     await writeConfig({ lastFile: filePath ?? undefined })
+    return true
+  })
+
+  // UI preferences (theme + zoom), loaded on launch and persisted on change.
+  ipcMain.handle('app:getSettings', async () => {
+    const cfg = await readConfig()
+    return {
+      theme: cfg.theme === 'light' ? 'light' : 'dark',
+      zoom: typeof cfg.zoom === 'number' ? cfg.zoom : 1
+    }
+  })
+
+  ipcMain.handle('app:setTheme', async (_e, theme: 'light' | 'dark') => {
+    await writeConfig({ theme: theme === 'light' ? 'light' : 'dark' })
+    return true
+  })
+
+  ipcMain.handle('app:setZoom', async (_e, zoom: number) => {
+    if (typeof zoom === 'number' && Number.isFinite(zoom)) {
+      await writeConfig({ zoom })
+    }
     return true
   })
 

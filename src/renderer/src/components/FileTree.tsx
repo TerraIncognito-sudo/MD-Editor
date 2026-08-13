@@ -24,13 +24,14 @@ interface TreeItemProps {
 }
 
 function TreeItem({ node, activePath, onSelect }: TreeItemProps): JSX.Element {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
 
   if (node.type === 'folder') {
+    const isEmpty = !node.children || node.children.length === 0
     return (
       <li className="tree-folder">
         <div className="tree-row folder-row" onClick={() => setExpanded((e) => !e)}>
-          <span className="chevron">{expanded ? '▾' : '▸'}</span>
+          <span className="chevron">{isEmpty ? '' : expanded ? '▾' : '▸'}</span>
           <span className="tree-label">{node.name}</span>
         </div>
         {expanded && node.children && (

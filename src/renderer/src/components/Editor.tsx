@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Crepe } from '@milkdown/crepe'
 import '@milkdown/crepe/theme/common/style.css'
-import '@milkdown/crepe/theme/frame-dark.css'
+// Theme color variables (light/dark) are defined in base.css, keyed on the
+// document's data-theme attribute, so the editor follows the app theme toggle.
 
 interface EditorProps {
   initialValue: string
