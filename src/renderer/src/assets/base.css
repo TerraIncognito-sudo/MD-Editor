@@ -280,6 +280,119 @@ body {
   font-size: 14px;
 }
 
+/* ---------- Tabs ---------- */
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+  min-height: 34px;
+  scrollbar-width: thin;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 220px;
+  border-top: 2px solid transparent;
+}
+.tab:hover {
+  background: var(--hover-bg);
+}
+.tab.active {
+  color: var(--text);
+  background: var(--bg);
+  border-top-color: var(--accent);
+}
+
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.tab-close:hover {
+  background: var(--active-bg);
+  color: var(--text);
+}
+
+/* ---------- Style / formatting bar ---------- */
+.style-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-wrap: wrap;
+}
+
+.style-group {
+  display: inline-flex;
+  align-items: center;
+}
+
+.style-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 6px;
+}
+
+.style-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  line-height: 1;
+}
+.style-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.style-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+.style-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.style-bold {
+  font-weight: 700;
+}
+.style-italic {
+  font-style: italic;
+}
+.style-strike {
+  text-decoration: line-through;
+}
+
 .milkdown-host {
   flex: 1;
   overflow-y: auto;
@@ -321,6 +434,16 @@ body {
 .status-btn:hover {
   background: var(--hover-bg);
   color: var(--text);
+}
+
+.status-message {
+  flex: 1;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .zoom-controls {

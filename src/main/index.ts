@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, Menu, MenuItem, session } from 'electron'
 import { join } from 'path'
 import { promises as fs } from 'fs'
 import * as path from 'path'
@@ -61,6 +61,50 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  // Right-click menu: spelling suggestions for misspelled words + edit actions.
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menu = new Menu()
+
+    for (const suggestion of params.dictionarySuggestions) {
+      menu.append(
+        new MenuItem({
+          label: suggestion,
+          click: () => mainWindow.webContents.replaceMisspelling(suggestion)
+        })
+      )
+    }
+
+    if (params.misspelledWord) {
+      if (params.dictionarySuggestions.length === 0) {
+        menu.append(new MenuItem({ label: 'No spelling suggestions', enabled: false }))
+      }
+      menu.append(new MenuItem({ type: 'separator' }))
+      menu.append(
+        new MenuItem({
+          label: 'Add to dictionary',
+          click: () =>
+            mainWindow.webContents.session.addWordToSpellCheckerDictionary(
+              params.misspelledWord
+            )
+        })
+      )
+      menu.append(new MenuItem({ type: 'separator' }))
+    }
+
+    const { editFlags } = params
+    if (params.isEditable || params.selectionText) {
+      menu.append(new MenuItem({ role: 'cut', enabled: editFlags.canCut }))
+      menu.append(new MenuItem({ role: 'copy', enabled: editFlags.canCopy }))
+      menu.append(new MenuItem({ role: 'paste', enabled: editFlags.canPaste }))
+      menu.append(new MenuItem({ type: 'separator' }))
+      menu.append(new MenuItem({ role: 'selectAll' }))
+    }
+
+    if (menu.items.length > 0) {
+      menu.popup({ window: mainWindow })
+    }
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -236,6 +280,12 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(() => {
+  // Enable English spellchecking (ignored on platforms that use the OS checker).
+  try {
+    session.defaultSession.setSpellCheckerLanguages(['en-US'])
+  } catch {
+    // Some platforms manage languages via the OS; safe to ignore.
+  }
   registerIpc()
   createWindow()
 
