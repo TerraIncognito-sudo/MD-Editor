@@ -5,13 +5,20 @@ interface FileTreeProps {
   nodes: TreeNode[]
   activePath: string | null
   onSelect: (node: TreeNode) => void
+  onContextMenu: (node: TreeNode, e: React.MouseEvent) => void
 }
 
-export function FileTree({ nodes, activePath, onSelect }: FileTreeProps): JSX.Element {
+export function FileTree({ nodes, activePath, onSelect, onContextMenu }: FileTreeProps): JSX.Element {
   return (
     <ul className="tree">
       {nodes.map((node) => (
-        <TreeItem key={node.path} node={node} activePath={activePath} onSelect={onSelect} />
+        <TreeItem
+          key={node.path}
+          node={node}
+          activePath={activePath}
+          onSelect={onSelect}
+          onContextMenu={onContextMenu}
+        />
       ))}
     </ul>
   )
@@ -21,16 +28,27 @@ interface TreeItemProps {
   node: TreeNode
   activePath: string | null
   onSelect: (node: TreeNode) => void
+  onContextMenu: (node: TreeNode, e: React.MouseEvent) => void
 }
 
-function TreeItem({ node, activePath, onSelect }: TreeItemProps): JSX.Element {
+function TreeItem({ node, activePath, onSelect, onContextMenu }: TreeItemProps): JSX.Element {
   const [expanded, setExpanded] = useState(false)
+
+  const handleContextMenu = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    onContextMenu(node, e)
+  }
 
   if (node.type === 'folder') {
     const isEmpty = !node.children || node.children.length === 0
     return (
       <li className="tree-folder">
-        <div className="tree-row folder-row" onClick={() => setExpanded((e) => !e)}>
+        <div
+          className="tree-row folder-row"
+          onClick={() => setExpanded((e) => !e)}
+          onContextMenu={handleContextMenu}
+        >
           <span className="chevron">{isEmpty ? '' : expanded ? '▾' : '▸'}</span>
           <span className="tree-label">{node.name}</span>
         </div>
@@ -42,6 +60,7 @@ function TreeItem({ node, activePath, onSelect }: TreeItemProps): JSX.Element {
                 node={child}
                 activePath={activePath}
                 onSelect={onSelect}
+                onContextMenu={onContextMenu}
               />
             ))}
           </ul>
@@ -56,6 +75,7 @@ function TreeItem({ node, activePath, onSelect }: TreeItemProps): JSX.Element {
       <div
         className={`tree-row file-row${isActive ? ' active' : ''}`}
         onClick={() => onSelect(node)}
+        onContextMenu={handleContextMenu}
       >
         <span className="tree-label">{node.name.replace(/\.(md|markdown|mdown|mkd|mdx)$/i, '')}</span>
       </div>

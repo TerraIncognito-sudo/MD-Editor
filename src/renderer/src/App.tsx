@@ -4,6 +4,9 @@ import { FileTree } from './components/FileTree'
 import { Editor, type EditorHandle, type SelectionState, type StyleCommand } from './components/Editor'
 import { StyleBar } from './components/StyleBar'
 import { TabBar, type TabInfo } from './components/TabBar'
+import { ContextMenu, type MenuItem } from './components/ContextMenu'
+import { PromptDialog } from './components/PromptDialog'
+import { ConfirmDialog } from './components/ConfirmDialog'
 
 type Theme = 'light' | 'dark'
 type ViewMode = 'page' | 'wide'
@@ -19,6 +22,16 @@ function baseName(filePath: string): string {
   return filePath.split(/[\\/]/).pop() || filePath
 }
 
+/** A file's display name without its markdown extension. */
+function displayName(fileName: string): string {
+  return fileName.replace(/\.(md|markdown|mdown|mkd|mdx)$/i, '')
+}
+
+/** True if `p` is `base` itself or lives inside the `base` directory. */
+function isUnderPath(p: string, base: string): boolean {
+  return p === base || p.startsWith(base + '\\') || p.startsWith(base + '/')
+}
+
 function App(): JSX.Element {
   const [folder, setFolder] = useState<FolderResult | null>(null)
   const [tabs, setTabs] = useState<TabInfo[]>([])
@@ -29,6 +42,19 @@ function App(): JSX.Element {
   const [selection, setSelection] = useState<SelectionState | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState<number>(260)
   const [viewMode, setViewMode] = useState<ViewMode>('page')
+  const [menu, setMenu] = useState<{ x: number; y: number; node: TreeNode | null } | null>(null)
+  const [prompt, setPrompt] = useState<{
+    title: string
+    value: string
+    confirmLabel: string
+    resolve: (v: string | null) => void
+  } | null>(null)
+  const [confirm, setConfirm] = useState<{
+    message: string
+    confirmLabel: string
+    danger: boolean
+    resolve: (ok: boolean) => void
+  } | null>(null)
 
   // Latest markdown per open file, so switching tabs preserves unsaved edits.
   const latestByPath = useRef<Map<string, string>>(new Map())
@@ -52,6 +78,24 @@ function App(): JSX.Element {
     setActivePath(path)
     void window.api.setLastFile(path)
   }, [])
+
+  // In-app replacement for window.prompt (unsupported in Electron).
+  const askPrompt = useCallback(
+    (title: string, initial: string, confirmLabel = 'OK'): Promise<string | null> =>
+      new Promise((resolve) => {
+        setPrompt({ title, value: initial, confirmLabel, resolve })
+      }),
+    []
+  )
+
+  // In-app confirm, so dialogs match the app chrome (and are theme-aware).
+  const askConfirm = useCallback(
+    (message: string, confirmLabel = 'OK', danger = false): Promise<boolean> =>
+      new Promise((resolve) => {
+        setConfirm({ message, confirmLabel, danger, resolve })
+      }),
+    []
+  )
 
   const openTab = useCallback(
     async (filePath: string, name: string) => {
@@ -82,10 +126,14 @@ function App(): JSX.Element {
   )
 
   const closeTab = useCallback(
-    (path: string) => {
+    async (path: string) => {
       const tab = tabs.find((t) => t.path === path)
       if (tab?.dirty) {
-        const discard = window.confirm(`"${tab.name}" has unsaved changes. Discard them?`)
+        const discard = await askConfirm(
+          `"${tab.name}" has unsaved changes. Discard them?`,
+          'Discard',
+          true
+        )
         if (!discard) return
       }
       const idx = tabs.findIndex((t) => t.path === path)
@@ -98,7 +146,7 @@ function App(): JSX.Element {
         if (!neighbor) setSelection(null)
       }
     },
-    [tabs, activate]
+    [tabs, activate, askConfirm]
   )
 
   const save = useCallback(async () => {
@@ -143,12 +191,152 @@ function App(): JSX.Element {
 
   const createFile = useCallback(async () => {
     if (!folder) return
-    const name = window.prompt('New note name:', 'Untitled')
+    const name = await askPrompt('New note name:', 'Untitled', 'Create')
     if (name === null) return
     const newPath = await window.api.createFile(folder.rootPath, name)
     await refreshTree()
     await openTab(newPath, baseName(newPath))
-  }, [folder, refreshTree, openTab])
+  }, [folder, refreshTree, openTab, askPrompt])
+
+  // ----- File-tree context-menu operations -----
+
+  const newFileIn = useCallback(
+    async (dirPath: string) => {
+      const name = await askPrompt('New note name:', 'Untitled', 'Create')
+      if (name === null) return
+      try {
+        const newPath = await window.api.createFile(dirPath, name)
+        await refreshTree()
+        await openTab(newPath, baseName(newPath))
+      } catch (err) {
+        setStatus(`Could not create note: ${(err as Error).message}`)
+      }
+    },
+    [refreshTree, openTab, askPrompt]
+  )
+
+  const newFolderIn = useCallback(
+    async (dirPath: string) => {
+      const name = await askPrompt('New folder name:', 'New Folder', 'Create')
+      if (name === null) return
+      try {
+        await window.api.createFolder(dirPath, name)
+        await refreshTree()
+      } catch (err) {
+        setStatus(`Could not create folder: ${(err as Error).message}`)
+      }
+    },
+    [refreshTree, askPrompt]
+  )
+
+  const renameNode = useCallback(
+    async (node: TreeNode) => {
+      const isFile = node.type === 'file'
+      const current = isFile ? displayName(node.name) : node.name
+      const input = await askPrompt(`Rename ${isFile ? 'note' : 'folder'}:`, current, 'Rename')
+      if (input === null) return
+      const trimmed = input.trim()
+      if (trimmed.length === 0 || trimmed === current) return
+
+      let newPath: string
+      try {
+        newPath = await window.api.rename(node.path, trimmed)
+      } catch (err) {
+        setStatus(`Rename failed: ${(err as Error).message}`)
+        return
+      }
+
+      // Migrate any open tabs (and their unsaved content) under the old path.
+      const oldPath = node.path
+      const remap = (p: string): string => newPath + p.slice(oldPath.length)
+      for (const [p, content] of Array.from(latestByPath.current.entries())) {
+        if (isUnderPath(p, oldPath)) {
+          latestByPath.current.delete(p)
+          latestByPath.current.set(remap(p), content)
+        }
+      }
+      setTabs((prev) =>
+        prev.map((t) =>
+          isUnderPath(t.path, oldPath)
+            ? { ...t, path: remap(t.path), name: baseName(remap(t.path)) }
+            : t
+        )
+      )
+      if (activePathRef.current && isUnderPath(activePathRef.current, oldPath)) {
+        activate(remap(activePathRef.current))
+      }
+      await refreshTree()
+    },
+    [activate, refreshTree, askPrompt]
+  )
+
+  const trashNode = useCallback(
+    async (node: TreeNode) => {
+      const isFile = node.type === 'file'
+      const label = isFile ? 'note' : 'folder'
+      const shown = isFile ? displayName(node.name) : node.name
+      const ok = await askConfirm(
+        `Move ${label} "${shown}" to the Recycle Bin?`,
+        'Delete',
+        true
+      )
+      if (!ok) return
+
+      try {
+        await window.api.trash(node.path)
+      } catch (err) {
+        setStatus(`Delete failed: ${(err as Error).message}`)
+        return
+      }
+
+      // Close any open tabs that lived under the deleted path.
+      setTabs((prev) => {
+        const target = node.path
+        const affected = prev.filter((t) => isUnderPath(t.path, target))
+        if (affected.length === 0) return prev
+        affected.forEach((t) => latestByPath.current.delete(t.path))
+        const nextTabs = prev.filter((t) => !isUnderPath(t.path, target))
+        if (activePathRef.current && isUnderPath(activePathRef.current, target)) {
+          const idx = prev.findIndex((t) => t.path === activePathRef.current)
+          const neighbor = nextTabs[idx] ?? nextTabs[idx - 1] ?? null
+          activate(neighbor ? neighbor.path : null)
+          if (!neighbor) setSelection(null)
+        }
+        return nextTabs
+      })
+      await refreshTree()
+      setStatus(`Moved "${shown}" to Recycle Bin`)
+      window.setTimeout(() => setStatus(''), 2500)
+    },
+    [activate, refreshTree, askConfirm]
+  )
+
+  const openContextMenu = useCallback((node: TreeNode, e: React.MouseEvent) => {
+    setMenu({ x: e.clientX, y: e.clientY, node })
+  }, [])
+
+  const menuItems = useCallback((): MenuItem[] => {
+    if (!folder || !menu) return []
+    const node = menu.node
+    if (node === null) {
+      return [
+        { label: 'New Note', onClick: () => void newFileIn(folder.rootPath) },
+        { label: 'New Folder', onClick: () => void newFolderIn(folder.rootPath) }
+      ]
+    }
+    if (node.type === 'folder') {
+      return [
+        { label: 'New Note', onClick: () => void newFileIn(node.path) },
+        { label: 'New Folder', onClick: () => void newFolderIn(node.path) },
+        { label: 'Rename', onClick: () => void renameNode(node) },
+        { label: 'Delete', onClick: () => void trashNode(node), danger: true }
+      ]
+    }
+    return [
+      { label: 'Rename', onClick: () => void renameNode(node) },
+      { label: 'Delete', onClick: () => void trashNode(node), danger: true }
+    ]
+  }, [folder, menu, newFileIn, newFolderIn, renameNode, trashNode])
 
   // Restore the previous session (last folder + note) on first launch.
   useEffect(() => {
@@ -279,12 +467,24 @@ function App(): JSX.Element {
               </button>
             </div>
           </div>
-          <div className="tree-scroll">
+          <div
+            className="tree-scroll"
+            onContextMenu={(e) => {
+              if (!folder) return
+              e.preventDefault()
+              setMenu({ x: e.clientX, y: e.clientY, node: null })
+            }}
+          >
             {folder ? (
               folder.tree.length > 0 ? (
-                <FileTree nodes={folder.tree} activePath={activePath} onSelect={openFileByPath} />
+                <FileTree
+                  nodes={folder.tree}
+                  activePath={activePath}
+                  onSelect={openFileByPath}
+                  onContextMenu={openContextMenu}
+                />
               ) : (
-                <p className="empty-hint">This folder is empty.</p>
+                <p className="empty-hint">This folder is empty. Right-click to add a note or folder.</p>
               )
             ) : (
               <div className="welcome">
@@ -368,6 +568,42 @@ function App(): JSX.Element {
           </button>
         </div>
       </footer>
+
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />
+      )}
+
+      {prompt && (
+        <PromptDialog
+          title={prompt.title}
+          initialValue={prompt.value}
+          confirmLabel={prompt.confirmLabel}
+          onSubmit={(v) => {
+            prompt.resolve(v)
+            setPrompt(null)
+          }}
+          onCancel={() => {
+            prompt.resolve(null)
+            setPrompt(null)
+          }}
+        />
+      )}
+
+      {confirm && (
+        <ConfirmDialog
+          message={confirm.message}
+          confirmLabel={confirm.confirmLabel}
+          danger={confirm.danger}
+          onConfirm={() => {
+            confirm.resolve(true)
+            setConfirm(null)
+          }}
+          onCancel={() => {
+            confirm.resolve(false)
+            setConfirm(null)
+          }}
+        />
+      )}
     </div>
   )
 }

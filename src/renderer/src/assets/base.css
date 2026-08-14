@@ -448,6 +448,131 @@ body.resizing-col {
   box-shadow: var(--crepe-shadow-2, 0 2px 12px rgba(0, 0, 0, 0.25));
 }
 
+/* ---------- Right-click context menu ---------- */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  line-height: 1;
+}
+.context-menu-item:hover {
+  background: var(--hover-bg);
+}
+.context-menu-item.danger {
+  color: #f38ba8;
+}
+.context-menu-item.danger:hover {
+  background: rgba(243, 139, 168, 0.14);
+}
+
+/* ---------- Modal prompt dialog ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-dialog {
+  width: 340px;
+  max-width: calc(100vw - 40px);
+  padding: 18px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.modal-message {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+.modal-input:focus {
+  border-color: var(--accent);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.modal-btn {
+  padding: 7px 14px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.modal-btn:hover {
+  background: var(--hover-bg);
+}
+.modal-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+}
+.modal-btn.primary:hover {
+  filter: brightness(1.08);
+}
+.modal-btn.danger {
+  background: #f38ba8;
+  border-color: #f38ba8;
+  color: #1e1e2e;
+  font-weight: 600;
+}
+.modal-btn.danger:hover {
+  filter: brightness(1.05);
+}
+
 /* ---------- Bottom status bar ---------- */
 .statusbar {
   display: flex;

@@ -268,6 +268,66 @@ function registerIpc(): void {
     return true
   })
 
+  // Create a new subfolder inside a folder (collision-safe).
+  ipcMain.handle('fs:createFolder', async (_e, dirPath: string, folderName: string) => {
+    if (typeof dirPath !== 'string' || typeof folderName !== 'string') {
+      throw new Error('Invalid arguments')
+    }
+    let name = folderName.trim().replace(/[\\/]/g, '')
+    if (name.length === 0) name = 'New Folder'
+    let target = path.join(dirPath, name)
+    let counter = 1
+    while (true) {
+      try {
+        await fs.access(target)
+        target = path.join(dirPath, `${name} ${counter}`)
+        counter += 1
+      } catch {
+        break
+      }
+    }
+    await fs.mkdir(target)
+    return target
+  })
+
+  // Rename a file or folder within its parent directory.
+  ipcMain.handle('fs:rename', async (_e, oldPath: string, newName: string) => {
+    if (typeof oldPath !== 'string' || typeof newName !== 'string') {
+      throw new Error('Invalid arguments')
+    }
+    let name = newName.trim()
+    if (name.length === 0) throw new Error('Name cannot be empty')
+    if (/[\\/]/.test(name)) throw new Error('Name cannot contain path separators')
+
+    const stat = await fs.stat(oldPath)
+    // Preserve a markdown extension on files if the user didn't type one.
+    if (stat.isFile() && !MARKDOWN_EXTENSIONS.has(path.extname(name).toLowerCase())) {
+      name = `${name}.md`
+    }
+    const target = path.join(path.dirname(oldPath), name)
+    if (path.normalize(target) === path.normalize(oldPath)) return oldPath
+
+    let exists = true
+    try {
+      await fs.access(target)
+    } catch {
+      exists = false
+    }
+    if (exists) throw new Error('An item with that name already exists')
+
+    await fs.rename(oldPath, target)
+    return target
+  })
+
+  // Move a file or folder to the OS trash (recoverable, not a hard delete).
+  ipcMain.handle('fs:trash', async (_e, targetPath: string) => {
+    if (typeof targetPath !== 'string' || targetPath.length === 0) {
+      throw new Error('Invalid path')
+    }
+    await shell.trashItem(targetPath)
+    return true
+  })
+
   // Create a new markdown file inside a folder.
   ipcMain.handle('fs:createFile', async (_e, dirPath: string, fileName: string) => {
     if (typeof dirPath !== 'string' || typeof fileName !== 'string') {

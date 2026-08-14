@@ -45,7 +45,12 @@ const api = {
   writeFile: (filePath: string, content: string): Promise<boolean> =>
     ipcRenderer.invoke('fs:writeFile', filePath, content),
   createFile: (dirPath: string, fileName: string): Promise<string> =>
-    ipcRenderer.invoke('fs:createFile', dirPath, fileName)
+    ipcRenderer.invoke('fs:createFile', dirPath, fileName),
+  createFolder: (dirPath: string, folderName: string): Promise<string> =>
+    ipcRenderer.invoke('fs:createFolder', dirPath, folderName),
+  rename: (oldPath: string, newName: string): Promise<string> =>
+    ipcRenderer.invoke('fs:rename', oldPath, newName),
+  trash: (targetPath: string): Promise<boolean> => ipcRenderer.invoke('fs:trash', targetPath)
 }
 
 contextBridge.exposeInMainWorld('api', api)
