@@ -32,6 +32,13 @@ export interface SelectionState {
   codeBlock: boolean
 }
 
+/** Word/character totals for the selection, or the whole note when nothing is selected. */
+export interface CountState {
+  words: number
+  chars: number
+  selected: boolean
+}
+
 export type StyleCommand =
   | 'bold'
   | 'italic'
@@ -53,6 +60,7 @@ interface EditorProps {
   onChange: (markdown: string) => void
   onUserEdit: () => void
   onSelectionChange: (state: SelectionState | null) => void
+  onCountsChange: (counts: CountState | null) => void
 }
 
 const EMPTY_STATE: SelectionState = {
@@ -105,8 +113,26 @@ function computeSelectionState(view: EditorView): SelectionState {
   }
 }
 
+/**
+ * Counts the words and characters in the current selection, falling back to the
+ * whole document when the selection is empty. Blocks are joined with newlines,
+ * which separate words but are not counted as characters.
+ */
+function computeCounts(view: EditorView): CountState {
+  const { doc, selection } = view.state
+  const selected = !selection.empty
+  const text = selected
+    ? doc.textBetween(selection.from, selection.to, '\n', '')
+    : doc.textBetween(0, doc.content.size, '\n', '')
+  return {
+    words: text.match(/\S+/g)?.length ?? 0,
+    chars: text.replace(/\n/g, '').length,
+    selected
+  }
+}
+
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { initialValue, onChange, onUserEdit, onSelectionChange },
+  { initialValue, onChange, onUserEdit, onSelectionChange, onCountsChange },
   ref
 ): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -120,13 +146,16 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   onUserEditRef.current = onUserEdit
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
+  const onCountsChangeRef = useRef(onCountsChange)
+  onCountsChangeRef.current = onCountsChange
 
-  const refreshSelection = (): void => {
+  const refreshState = (): void => {
     const view = viewRef.current
     if (!view) return
     const next = computeSelectionState(view)
     lastStateRef.current = next
     onSelectionChangeRef.current(next)
+    onCountsChangeRef.current(computeCounts(view))
   }
 
   useImperativeHandle(ref, () => ({
@@ -172,7 +201,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         }
       }
       view.focus()
-      refreshSelection()
+      refreshState()
     }
   }))
 
@@ -186,7 +215,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {
         onChangeRef.current(markdown)
-        refreshSelection()
+        refreshState()
       })
     })
 
@@ -203,14 +232,14 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       if (!view) return
       const sel = document.getSelection()
       if (sel && sel.anchorNode && view.dom.contains(sel.anchorNode)) {
-        setTimeout(refreshSelection, 0)
+        setTimeout(refreshState, 0)
       }
     }
     document.addEventListener('selectionchange', handleSelection)
 
     void crepe.create().then(() => {
       viewRef.current = crepe.editor.action((ctx) => ctx.get(editorViewCtx))
-      refreshSelection()
+      refreshState()
     })
 
     return () => {
@@ -219,6 +248,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       viewRef.current = null
       crepeRef.current = null
       onSelectionChangeRef.current(null)
+      onCountsChangeRef.current(null)
       // Crepe.destroy is async; we don't await it during unmount.
       void crepe.destroy()
     }

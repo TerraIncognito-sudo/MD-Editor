@@ -616,6 +616,19 @@ body.resizing-col {
   white-space: nowrap;
 }
 
+.status-counts {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+/* Highlighted while it reports a selection rather than the whole note. */
+.status-counts.selected {
+  color: var(--text);
+}
+
 .zoom-controls {
   display: flex;
   align-items: center;

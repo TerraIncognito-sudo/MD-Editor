@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FolderResult, TreeNode } from '../../preload/index'
 import { FileTree } from './components/FileTree'
-import { Editor, type EditorHandle, type SelectionState, type StyleCommand } from './components/Editor'
+import {
+  Editor,
+  type CountState,
+  type EditorHandle,
+  type SelectionState,
+  type StyleCommand
+} from './components/Editor'
 import { StyleBar } from './components/StyleBar'
 import { TabBar, type TabInfo } from './components/TabBar'
 import { ContextMenu, type MenuItem } from './components/ContextMenu'
@@ -27,6 +33,13 @@ function displayName(fileName: string): string {
   return fileName.replace(/\.(md|markdown|mdown|mkd|mdx)$/i, '')
 }
 
+/** Status-bar text for the word/character counts, e.g. "12 words · 60 characters selected". */
+function formatCounts(c: CountState): string {
+  const words = `${c.words.toLocaleString()} ${c.words === 1 ? 'word' : 'words'}`
+  const chars = `${c.chars.toLocaleString()} ${c.chars === 1 ? 'character' : 'characters'}`
+  return `${words} · ${chars}${c.selected ? ' selected' : ''}`
+}
+
 /** True if `p` is `base` itself or lives inside the `base` directory. */
 function isUnderPath(p: string, base: string): boolean {
   return p === base || p.startsWith(base + '\\') || p.startsWith(base + '/')
@@ -40,6 +53,7 @@ function App(): JSX.Element {
   const [theme, setTheme] = useState<Theme>('dark')
   const [zoom, setZoom] = useState<number>(1)
   const [selection, setSelection] = useState<SelectionState | null>(null)
+  const [counts, setCounts] = useState<CountState | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState<number>(260)
   const [viewMode, setViewMode] = useState<ViewMode>('page')
   const [menu, setMenu] = useState<{ x: number; y: number; node: TreeNode | null } | null>(null)
@@ -143,7 +157,10 @@ function App(): JSX.Element {
       if (activePathRef.current === path) {
         const neighbor = nextTabs[idx] ?? nextTabs[idx - 1] ?? null
         activate(neighbor ? neighbor.path : null)
-        if (!neighbor) setSelection(null)
+        if (!neighbor) {
+          setSelection(null)
+          setCounts(null)
+        }
       }
     },
     [tabs, activate, askConfirm]
@@ -185,18 +202,13 @@ function App(): JSX.Element {
     setSelection(s)
   }, [])
 
+  const handleCountsChange = useCallback((c: CountState | null) => {
+    setCounts(c)
+  }, [])
+
   const runStyleCommand = useCallback((cmd: StyleCommand) => {
     editorRef.current?.runCommand(cmd)
   }, [])
-
-  const createFile = useCallback(async () => {
-    if (!folder) return
-    const name = await askPrompt('New note name:', 'Untitled', 'Create')
-    if (name === null) return
-    const newPath = await window.api.createFile(folder.rootPath, name)
-    await refreshTree()
-    await openTab(newPath, baseName(newPath))
-  }, [folder, refreshTree, openTab, askPrompt])
 
   // ----- File-tree context-menu operations -----
 
@@ -300,7 +312,10 @@ function App(): JSX.Element {
           const idx = prev.findIndex((t) => t.path === activePathRef.current)
           const neighbor = nextTabs[idx] ?? nextTabs[idx - 1] ?? null
           activate(neighbor ? neighbor.path : null)
-          if (!neighbor) setSelection(null)
+          if (!neighbor) {
+            setSelection(null)
+            setCounts(null)
+          }
         }
         return nextTabs
       })
@@ -457,11 +472,6 @@ function App(): JSX.Element {
           <div className="sidebar-header">
             <span className="sidebar-title">{folder ? folder.rootName : 'MD Editor'}</span>
             <div className="sidebar-actions">
-              {folder && (
-                <button className="icon-btn" title="New note" onClick={createFile}>
-                  +
-                </button>
-              )}
               <button className="icon-btn" title="Open folder" onClick={openFolder}>
                 ⌕
               </button>
@@ -522,6 +532,7 @@ function App(): JSX.Element {
                 onChange={handleChange}
                 onUserEdit={handleUserEdit}
                 onSelectionChange={handleSelectionChange}
+                onCountsChange={handleCountsChange}
               />
             </>
           ) : (
@@ -555,6 +566,15 @@ function App(): JSX.Element {
         </div>
 
         <span className="status-message">{status}</span>
+
+        {counts && (
+          <span
+            className={`status-counts${counts.selected ? ' selected' : ''}`}
+            title={counts.selected ? 'Counts for the selected text' : 'Counts for the whole note'}
+          >
+            {formatCounts(counts)}
+          </span>
+        )}
 
         <div className="zoom-controls">
           <button className="status-btn zoom-btn" onClick={zoomOut} title="Zoom out (Ctrl -)">
