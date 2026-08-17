@@ -61,6 +61,8 @@ interface EditorProps {
   onUserEdit: () => void
   onSelectionChange: (state: SelectionState | null) => void
   onCountsChange: (counts: CountState | null) => void
+  /** Fired once the note is rendered on screen (used to print a just-opened note). */
+  onReady: () => void
 }
 
 const EMPTY_STATE: SelectionState = {
@@ -132,7 +134,7 @@ function computeCounts(view: EditorView): CountState {
 }
 
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { initialValue, onChange, onUserEdit, onSelectionChange, onCountsChange },
+  { initialValue, onChange, onUserEdit, onSelectionChange, onCountsChange, onReady },
   ref
 ): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -148,6 +150,8 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   onSelectionChangeRef.current = onSelectionChange
   const onCountsChangeRef = useRef(onCountsChange)
   onCountsChangeRef.current = onCountsChange
+  const onReadyRef = useRef(onReady)
+  onReadyRef.current = onReady
 
   const refreshState = (): void => {
     const view = viewRef.current
@@ -240,6 +244,11 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     void crepe.create().then(() => {
       viewRef.current = crepe.editor.action((ctx) => ctx.get(editorViewCtx))
       refreshState()
+      // Announce readiness only once the new note has actually been painted:
+      // rAF runs before the paint, so hand off to a task that runs after it.
+      // (Printing blocks the renderer, so firing early would leave the previous
+      // note on screen behind the print dialog.)
+      requestAnimationFrame(() => setTimeout(() => onReadyRef.current(), 0))
     })
 
     return () => {

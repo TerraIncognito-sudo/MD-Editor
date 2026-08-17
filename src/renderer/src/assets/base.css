@@ -646,3 +646,107 @@ body.resizing-col {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- Printing ----------
+   Only the note itself goes on paper: the app chrome is hidden, the scrolling
+   containers are opened up so the whole note flows across pages, and colors are
+   forced to black-on-white (printers drop backgrounds, so dark theme would
+   otherwise print as pale text on blank paper). */
+@page {
+  size: letter;
+  margin: 1in;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* App chrome — none of this belongs on paper. */
+  .sidebar,
+  .col-resizer,
+  .tab-bar,
+  .style-bar,
+  .statusbar,
+  .context-menu,
+  .modal-overlay,
+  .milkdown-toolbar,
+  .milkdown-top-bar,
+  .milkdown-block-handle,
+  .milkdown-slash-menu,
+  .milkdown-link-edit,
+  .milkdown-link-preview,
+  .milkdown-latex-inline-edit,
+  [class^='milkdown-ai-'],
+  /* Code-block chrome: language picker, copy/preview buttons, fold gutter. */
+  .milkdown-code-block .language-picker,
+  .milkdown-code-block .tools,
+  .milkdown-code-block .cm-gutters,
+  .milkdown-code-block .cm-panel {
+    display: none !important;
+  }
+
+  /* Unwrap the flex/scroll layout so the note pages instead of clipping. */
+  .app-shell,
+  .app,
+  .editor-pane,
+  .milkdown-host,
+  .milkdown-host .milkdown {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* @page already supplies the 1in margins, so drop the on-screen page frame. */
+  .milkdown .ProseMirror,
+  .view-page .milkdown-host .milkdown .ProseMirror,
+  .view-wide .milkdown-host .milkdown .ProseMirror {
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .milkdown,
+  .milkdown * {
+    color: #000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .milkdown blockquote {
+    border-left: 3px solid #999 !important;
+  }
+
+  .milkdown table,
+  .milkdown th,
+  .milkdown td,
+  .milkdown hr {
+    border-color: #999 !important;
+  }
+
+  /* Keep headings with the text they introduce, and don't split short blocks. */
+  .milkdown h1,
+  .milkdown h2,
+  .milkdown h3,
+  .milkdown h4 {
+    break-after: avoid;
+  }
+
+  .milkdown img,
+  .milkdown pre,
+  .milkdown blockquote,
+  .milkdown tr {
+    break-inside: avoid;
+  }
+}

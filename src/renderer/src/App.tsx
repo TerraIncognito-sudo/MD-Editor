@@ -76,6 +76,8 @@ function App(): JSX.Element {
   const activePathRef = useRef<string | null>(null)
   activePathRef.current = activePath
   const editorRef = useRef<EditorHandle>(null)
+  // Set when a note must be printed as soon as its editor finishes rendering.
+  const pendingPrintRef = useRef<string | null>(null)
 
   const openFolder = useCallback(async () => {
     const result = await window.api.openFolder()
@@ -209,6 +211,40 @@ function App(): JSX.Element {
   const runStyleCommand = useCallback((cmd: StyleCommand) => {
     editorRef.current?.runCommand(cmd)
   }, [])
+
+  // Hands the rendered note to the system print dialog. The @media print rules
+  // in base.css strip the app chrome and flow the note onto letter pages.
+  const printActive = useCallback(() => {
+    if (!activePathRef.current) return
+    window.print()
+  }, [])
+
+  // A note asked to print before it was on screen prints once the editor renders.
+  const handleEditorReady = useCallback(() => {
+    if (pendingPrintRef.current && pendingPrintRef.current === activePathRef.current) {
+      pendingPrintRef.current = null
+      printActive()
+    }
+  }, [printActive])
+
+  const printNode = useCallback(
+    async (node: TreeNode) => {
+      if (node.type !== 'file') return
+      if (activePathRef.current === node.path) {
+        printActive()
+        return
+      }
+      // Not on screen yet: open it, and print when its editor reports ready.
+      pendingPrintRef.current = node.path
+      try {
+        await openTab(node.path, node.name)
+      } catch (err) {
+        pendingPrintRef.current = null
+        setStatus(`Could not open note: ${(err as Error).message}`)
+      }
+    },
+    [openTab, printActive]
+  )
 
   // ----- File-tree context-menu operations -----
 
@@ -348,10 +384,11 @@ function App(): JSX.Element {
       ]
     }
     return [
+      { label: 'Print', onClick: () => void printNode(node) },
       { label: 'Rename', onClick: () => void renameNode(node) },
       { label: 'Delete', onClick: () => void trashNode(node), danger: true }
     ]
-  }, [folder, menu, newFileIn, newFolderIn, renameNode, trashNode])
+  }, [folder, menu, newFileIn, newFolderIn, renameNode, trashNode, printNode])
 
   // Restore the previous session (last folder + note) on first launch.
   useEffect(() => {
@@ -457,11 +494,14 @@ function App(): JSX.Element {
       } else if (key === '0') {
         e.preventDefault()
         zoomReset()
+      } else if (key === 'p') {
+        e.preventDefault()
+        printActive()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [save, closeTab, zoomIn, zoomOut, zoomReset])
+  }, [save, closeTab, zoomIn, zoomOut, zoomReset, printActive])
 
   const activeContent = activePath ? latestByPath.current.get(activePath) ?? '' : ''
 
@@ -533,6 +573,7 @@ function App(): JSX.Element {
                 onUserEdit={handleUserEdit}
                 onSelectionChange={handleSelectionChange}
                 onCountsChange={handleCountsChange}
+                onReady={handleEditorReady}
               />
             </>
           ) : (
@@ -563,6 +604,11 @@ function App(): JSX.Element {
           >
             {viewMode === 'page' ? '▭ Page' : '⬌ Wide'}
           </button>
+          {activePath && (
+            <button className="status-btn" onClick={printActive} title="Print this note (Ctrl P)">
+              ⎙ Print
+            </button>
+          )}
         </div>
 
         <span className="status-message">{status}</span>
