@@ -16,7 +16,12 @@ beyond a small local config remembering your last-opened folder.
 - **Live preview editing** — a WYSIWYG markdown editor (Milkdown) renders
   formatting inline while keeping the file as plain markdown on disk.
 - **Save with `Ctrl+S`** — writes straight back to the original file.
-- **New note** — the `+` button creates a markdown file in the current folder.
+- **File management** — right-click in the sidebar to create, rename, delete
+  or print notes and folders.
+- **Live folder view** — the sidebar follows the folder on disk, so notes added,
+  renamed or deleted outside the app show up on their own.
+- **Open from Explorer** — double-clicking a `.md` file (or "Open with") opens
+  it in a tab of the running app, rather than starting a second copy.
 - **Session restore** — reopens your last folder and note on launch.
 - **Local only** — no accounts, no telemetry, no network access.
 

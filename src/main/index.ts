@@ -1,6 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, Menu, MenuItem, session } from 'electron'
 import { join } from 'path'
-import { promises as fs } from 'fs'
+import { promises as fs, statSync, watch, type FSWatcher } from 'fs'
 import * as path from 'path'
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.mkd', '.mdx'])
@@ -161,6 +161,90 @@ async function readDirTree(dirPath: string): Promise<TreeNode[]> {
   return [...folders, ...files]
 }
 
+// ---- Watching the open folder ----
+// The sidebar mirrors a folder on disk, so changes made outside the app (in
+// Explorer, by a sync client, by another editor) have to reach the renderer.
+// One recursive watcher follows whichever root is open; its events are
+// debounced because a single save can emit several in a row.
+
+let folderWatcher: FSWatcher | null = null
+let watchedRoot: string | null = null
+let watchTimer: NodeJS.Timeout | null = null
+// The last tree handed to the renderer, serialized. Rewriting a file's contents
+// leaves the listing identical, so comparing against this avoids pointless
+// updates on every save.
+let lastTreeJson = ''
+
+function sendToWindows(channel: string, payload: unknown): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(channel, payload)
+  }
+}
+
+async function pushTree(rootPath: string): Promise<void> {
+  if (rootPath !== watchedRoot) return
+  const tree = await readDirTree(rootPath)
+  const json = JSON.stringify(tree)
+  if (json === lastTreeJson) return
+  lastTreeJson = json
+  sendToWindows('folder:changed', { rootPath, rootName: path.basename(rootPath), tree })
+}
+
+function stopWatchingFolder(): void {
+  if (watchTimer) {
+    clearTimeout(watchTimer)
+    watchTimer = null
+  }
+  folderWatcher?.close()
+  folderWatcher = null
+  watchedRoot = null
+}
+
+/** Watches `rootPath` for changes, treating `tree` as what the renderer shows. */
+function watchFolder(rootPath: string, tree: TreeNode[]): void {
+  lastTreeJson = JSON.stringify(tree)
+  if (watchedRoot === rootPath && folderWatcher) return
+  stopWatchingFolder()
+  watchedRoot = rootPath
+  try {
+    folderWatcher = watch(rootPath, { recursive: true }, () => {
+      if (watchTimer) clearTimeout(watchTimer)
+      watchTimer = setTimeout(() => {
+        watchTimer = null
+        void pushTree(rootPath)
+      }, 250)
+    })
+    // A watcher can fail on its own (folder deleted, drive unplugged). Drop it
+    // instead of crashing; the window still re-reads the tree when refocused.
+    folderWatcher.on('error', () => stopWatchingFolder())
+  } catch {
+    // Unwatchable location (some network paths). Refresh-on-focus still covers it.
+    folderWatcher = null
+  }
+}
+
+// ---- Files opened from Explorer (double-click, "Open with") ----
+// Windows passes the file path in argv. On a cold start that is this process's
+// own argv; when the app is already running, the single-instance lock forwards
+// the new process's argv to the running copy instead of launching a second one.
+
+function markdownPathFromArgv(argv: string[]): string | null {
+  for (const arg of argv.slice(1)) {
+    if (arg.startsWith('-')) continue
+    if (!MARKDOWN_EXTENSIONS.has(path.extname(arg).toLowerCase())) continue
+    try {
+      const resolved = path.resolve(arg)
+      if (statSync(resolved).isFile()) return resolved
+    } catch {
+      // Not a real file (or unreadable) — keep looking at the other arguments.
+    }
+  }
+  return null
+}
+
+// A file the app was launched with, held until the UI is ready to receive it.
+let pendingOpenFile: string | null = null
+
 function registerIpc(): void {
   // Let the user pick a vault/root folder.
   ipcMain.handle('dialog:openFolder', async () => {
@@ -170,6 +254,7 @@ function registerIpc(): void {
     if (result.canceled || result.filePaths.length === 0) return null
     const rootPath = result.filePaths[0]
     const tree = await readDirTree(rootPath)
+    watchFolder(rootPath, tree)
     await writeConfig({ lastFolder: rootPath })
     return { rootPath, rootName: path.basename(rootPath), tree }
   })
@@ -185,6 +270,7 @@ function registerIpc(): void {
       return null
     }
     const tree = await readDirTree(cfg.lastFolder)
+    watchFolder(cfg.lastFolder, tree)
     let lastFile: string | null = null
     if (cfg.lastFile) {
       try {
@@ -205,6 +291,22 @@ function registerIpc(): void {
   // Remember which note is open, so it can be reopened next launch.
   ipcMain.handle('app:setLastFile', async (_e, filePath: string | null) => {
     await writeConfig({ lastFile: filePath ?? undefined })
+    return true
+  })
+
+  // Hand over a file the app was launched with, exactly once.
+  ipcMain.handle('app:takePendingFile', async () => {
+    const file = pendingOpenFile
+    pendingOpenFile = null
+    return file
+  })
+
+  // Remember which folder the sidebar is showing. Used when a file opened from
+  // Explorer adopts its own folder as the root, so the next launch restores it.
+  ipcMain.handle('app:setLastFolder', async (_e, rootPath: string) => {
+    if (typeof rootPath === 'string' && rootPath.length > 0) {
+      await writeConfig({ lastFolder: rootPath })
+    }
     return true
   })
 
@@ -248,6 +350,7 @@ function registerIpc(): void {
   ipcMain.handle('fs:readTree', async (_e, rootPath: string) => {
     if (typeof rootPath !== 'string' || rootPath.length === 0) return null
     const tree = await readDirTree(rootPath)
+    watchFolder(rootPath, tree)
     return { rootPath, rootName: path.basename(rootPath), tree }
   })
 
@@ -356,22 +459,44 @@ function registerIpc(): void {
   })
 }
 
-app.whenReady().then(() => {
-  // Enable English spellchecking (ignored on platforms that use the OS checker).
-  try {
-    session.defaultSession.setSpellCheckerLanguages(['en-US'])
-  } catch {
-    // Some platforms manage languages via the OS; safe to ignore.
-  }
-  registerIpc()
-  createWindow()
+// A second copy of the app would fight over the same files and lose the point of
+// "open this note in the editor I already have running", so only one runs.
+const gotTheLock = app.requestSingleInstanceLock()
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  // Explorer launched a second copy: take the file it was given and hand it to
+  // the window that is already open.
+  app.on('second-instance', (_event, argv) => {
+    const file = markdownPathFromArgv(argv)
+    const [win] = BrowserWindow.getAllWindows()
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
+    if (file) win.webContents.send('file:open', file)
   })
-})
+
+  pendingOpenFile = markdownPathFromArgv(process.argv)
+
+  app.whenReady().then(() => {
+    // Enable English spellchecking (ignored on platforms that use the OS checker).
+    try {
+      session.defaultSession.setSpellCheckerLanguages(['en-US'])
+    } catch {
+      // Some platforms manage languages via the OS; safe to ignore.
+    }
+    registerIpc()
+    createWindow()
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+}
 
 app.on('window-all-closed', () => {
+  stopWatchingFolder()
   if (process.platform !== 'darwin') {
     app.quit()
   }

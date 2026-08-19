@@ -28,6 +28,13 @@ function baseName(filePath: string): string {
   return filePath.split(/[\\/]/).pop() || filePath
 }
 
+/** The folder a file lives in. */
+function dirName(filePath: string): string {
+  const parts = filePath.split(/[\\/]/)
+  parts.pop()
+  return parts.join('\\') || filePath
+}
+
 /** A file's display name without its markdown extension. */
 function displayName(fileName: string): string {
   return fileName.replace(/\.(md|markdown|mdown|mkd|mdx)$/i, '')
@@ -72,6 +79,9 @@ function App(): JSX.Element {
 
   // Latest markdown per open file, so switching tabs preserves unsaved edits.
   const latestByPath = useRef<Map<string, string>>(new Map())
+  // Mirror of `folder`, updated synchronously so callbacks that run before the
+  // next render (session restore, watcher pushes) see the current root.
+  const folderRef = useRef<FolderResult | null>(null)
   // Mirror of activePath for use inside stable editor callbacks.
   const activePathRef = useRef<string | null>(null)
   activePathRef.current = activePath
@@ -79,16 +89,26 @@ function App(): JSX.Element {
   // Set when a note must be printed as soon as its editor finishes rendering.
   const pendingPrintRef = useRef<string | null>(null)
 
-  const openFolder = useCallback(async () => {
-    const result = await window.api.openFolder()
-    if (result) setFolder(result)
+  const applyFolder = useCallback((next: FolderResult) => {
+    folderRef.current = next
+    setFolder(next)
   }, [])
 
+  const openFolder = useCallback(async () => {
+    const result = await window.api.openFolder()
+    if (result) applyFolder(result)
+  }, [applyFolder])
+
   const refreshTree = useCallback(async () => {
-    if (!folder) return
-    const result = await window.api.readTree(folder.rootPath)
-    if (result) setFolder(result)
-  }, [folder])
+    const current = folderRef.current
+    if (!current) return
+    const result = await window.api.readTree(current.rootPath)
+    // Re-render only when the listing actually differs, so a refresh that finds
+    // nothing new doesn't disturb the sidebar.
+    if (result && JSON.stringify(result.tree) !== JSON.stringify(current.tree)) {
+      applyFolder(result)
+    }
+  }, [applyFolder])
 
   const activate = useCallback((path: string | null) => {
     setActivePath(path)
@@ -139,6 +159,28 @@ function App(): JSX.Element {
       }
     },
     [openTab]
+  )
+
+  // Opens a note the OS handed us (double-click, "Open with"). With no folder
+  // open yet, the note's own folder becomes the sidebar root; otherwise the
+  // current root is left alone and the note simply opens in a tab.
+  const openPathFromOs = useCallback(
+    async (filePath: string) => {
+      try {
+        if (!folderRef.current) {
+          const dir = dirName(filePath)
+          const result = await window.api.readTree(dir)
+          if (result) {
+            applyFolder(result)
+            void window.api.setLastFolder(result.rootPath)
+          }
+        }
+        await openTab(filePath, baseName(filePath))
+      } catch (err) {
+        setStatus(`Could not open ${baseName(filePath)}: ${(err as Error).message}`)
+      }
+    },
+    [applyFolder, openTab]
   )
 
   const closeTab = useCallback(
@@ -395,20 +437,50 @@ function App(): JSX.Element {
     let cancelled = false
     void (async () => {
       const session = await window.api.getLastSession()
-      if (cancelled || !session) return
-      setFolder({ rootPath: session.rootPath, rootName: session.rootName, tree: session.tree })
-      if (session.lastFile) {
-        try {
-          await openTab(session.lastFile, baseName(session.lastFile))
-        } catch {
-          /* file vanished; ignore */
+      if (cancelled) return
+      if (session) {
+        applyFolder({ rootPath: session.rootPath, rootName: session.rootName, tree: session.tree })
+        if (session.lastFile) {
+          try {
+            await openTab(session.lastFile, baseName(session.lastFile))
+          } catch {
+            /* file vanished; ignore */
+          }
         }
       }
+      // Launched by double-clicking a .md file: open it last, so it ends up as
+      // the focused tab rather than the restored note.
+      const launchFile = await window.api.takePendingFile()
+      if (!cancelled && launchFile) await openPathFromOs(launchFile)
     })()
     return () => {
       cancelled = true
     }
-  }, [openTab])
+  }, [openTab, openPathFromOs, applyFolder])
+
+  // Keep the sidebar in step with the folder on disk: the main process watches
+  // the open root and pushes a new tree when anything is added, renamed or
+  // removed outside the app.
+  useEffect(() => {
+    return window.api.onFolderChanged((next) => {
+      if (folderRef.current && next.rootPath === folderRef.current.rootPath) {
+        applyFolder(next)
+      }
+    })
+  }, [applyFolder])
+
+  // Watchers can miss changes (sync clients, network paths), so re-read the tree
+  // whenever the window is refocused — typically right after editing elsewhere.
+  useEffect(() => {
+    const onFocus = (): void => void refreshTree()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refreshTree])
+
+  // Explorer asked this already-running copy to open a note.
+  useEffect(() => {
+    return window.api.onOpenFile((filePath) => void openPathFromOs(filePath))
+  }, [openPathFromOs])
 
   // Load saved UI preferences (theme, zoom, sidebar width, view mode) on launch.
   useEffect(() => {
@@ -512,6 +584,15 @@ function App(): JSX.Element {
           <div className="sidebar-header">
             <span className="sidebar-title">{folder ? folder.rootName : 'MD Editor'}</span>
             <div className="sidebar-actions">
+              {folder && (
+                <button
+                  className="icon-btn"
+                  title="Refresh folder"
+                  onClick={() => void refreshTree()}
+                >
+                  ↻
+                </button>
+              )}
               <button className="icon-btn" title="Open folder" onClick={openFolder}>
                 ⌕
               </button>

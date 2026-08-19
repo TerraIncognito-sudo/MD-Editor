@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webFrame } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from 'electron'
 
 export interface TreeNode {
   name: string
@@ -29,6 +29,22 @@ const api = {
   getLastSession: (): Promise<SessionResult | null> => ipcRenderer.invoke('app:getLastSession'),
   setLastFile: (filePath: string | null): Promise<boolean> =>
     ipcRenderer.invoke('app:setLastFile', filePath),
+  setLastFolder: (rootPath: string): Promise<boolean> =>
+    ipcRenderer.invoke('app:setLastFolder', rootPath),
+  // A file the app was launched with from Explorer, if any. Returns it once.
+  takePendingFile: (): Promise<string | null> => ipcRenderer.invoke('app:takePendingFile'),
+  // Explorer asked the already-running app to open a file.
+  onOpenFile: (callback: (filePath: string) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, filePath: string): void => callback(filePath)
+    ipcRenderer.on('file:open', listener)
+    return () => ipcRenderer.removeListener('file:open', listener)
+  },
+  // The open folder changed on disk (files added, renamed or removed elsewhere).
+  onFolderChanged: (callback: (folder: FolderResult) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, folder: FolderResult): void => callback(folder)
+    ipcRenderer.on('folder:changed', listener)
+    return () => ipcRenderer.removeListener('folder:changed', listener)
+  },
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('app:getSettings'),
   setTheme: (theme: 'light' | 'dark'): Promise<boolean> =>
     ipcRenderer.invoke('app:setTheme', theme),
